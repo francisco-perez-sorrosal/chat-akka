@@ -25,6 +25,7 @@ import akka.actor.ActorRef
 import akka.actor.ReceiveTimeout
 import scala.collection.immutable.HashMap
 import com.linkingenius.chat.utils.Logging
+import akka.actor.TypedActor
 
 case class User(name: String) {
   override def toString = name
@@ -35,7 +36,7 @@ case class Register(user: User)
 case class Deregister(user: User)
 case class UserMessage(user: User, text: Message)
 
-class ChatRoom(roomName: String) extends Actor with Logging {
+class ChatRoom(roomName: String, chatService: RegistrationService) extends Actor with Logging {
 
   class Session(user: User, originRoom: Option[ActorRef]) extends Actor {
 
@@ -57,10 +58,15 @@ class ChatRoom(roomName: String) extends Actor with Logging {
     case Register(user) =>
       val sessionUser = actorOf(new Session(user, optionSelf)).start()
       session += (user -> sessionUser)
-      println(user + " subscribed")
+      logger.debug(user + " subscribed")
     case Deregister(user) =>
       session -= (user)
-      println(user + " unsubscribed")
+      logger.debug(user + " unsubscribed")
+      if (session.size == 0) {
+        logger.debug("Room empty")
+        chatService.destroyRoom(roomName)
+        self.stop()
+      }
     case UserMessage(user, post) =>
       for (key <- session.keys; if key != user) { session(key).forward(UserMessage(user, post)) }
     case _ => logger.debug("Unknown message")
@@ -68,18 +74,31 @@ class ChatRoom(roomName: String) extends Actor with Logging {
 
 }
 
-object SimpleChat {
+trait RegistrationService {
+  def register(user: User, roomName: String): ActorRef
+  def deregister(user: User)
+  def destroyRoom(name: String)
+}
+
+object SimpleChat extends TypedActor with RegistrationService with Logging {
   type RoomKey = String
   type Room = ActorRef
 
   var rooms = HashMap.empty[RoomKey, Room]
   var usersRooms = HashMap.empty[User, Room]
 
+  override def preStart() = logger.debug("Running")
+
   private def createRoom(name: RoomKey): Room = {
-    println("Creating room " + name)
-    val room = actorOf(new ChatRoom(name)).start()
+    logger.debug("Creating room " + name)
+    val room = actorOf(new ChatRoom(name, this)).start()
     rooms += (name -> room)
     room
+  }
+
+  def destroyRoom(name: RoomKey) = {
+    logger.debug("Destroying room " + name)
+    rooms -= (name)
   }
 
   def register(user: User, roomName: RoomKey): ActorRef = {

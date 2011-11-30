@@ -28,6 +28,7 @@ import org.junit.runner.RunWith
 import org.specs2.mutable.Specification
 import org.specs2.mutable.BeforeAfter
 import org.specs2.runner.JUnitRunner
+import akka.actor.TypedActor
 
 @RunWith(classOf[JUnitRunner])
 class ChatSpec extends Specification with ChatContext {
@@ -36,16 +37,16 @@ class ChatSpec extends Specification with ChatContext {
 }
 
 trait ChatContext extends BeforeAfter {
-  val franChannel = SimpleChat.register(User("Fran"), "TestRoom")
-  val juanChannel = SimpleChat.register(User("Juan"), "TestRoom")
+  val chatService = TypedActor.newInstance(classOf[RegistrationService], SimpleChat)
+  println("Registering users...")
+  val franChannel = chatService.register(User("Fran"), "TestRoom")
+  val juanChannel = chatService.register(User("Juan"), "TestRoom")
 
-  def before = {
-    println("Registering users...")
-  }
+  def before = {}
 
   def after = {
     println("De-Registering users...")
-    SimpleChat.deregister(User("Fran"))
-    SimpleChat.deregister(User("Juan"))
+    chatService.deregister(User("Fran"))
+    chatService.deregister(User("Juan"))
   }
 }
